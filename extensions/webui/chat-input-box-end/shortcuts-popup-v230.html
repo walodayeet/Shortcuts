@@ -1,0 +1,49 @@
+<html>
+<head>
+  <script type="module" src="/plugins/slash_shortcuts/webui/slash-shortcuts-store.js?v=2.3.1"></script>
+</head>
+<body>
+  <div x-data x-move-after="#chat-input-container">
+    <template x-if="$store.slashShortcuts">
+      <div class="slash-shortcuts-root" x-init="$store.slashShortcuts.mount()" x-destroy="$store.slashShortcuts.cleanup()">
+        <template x-if="$store.slashShortcuts.visible">
+          <div class="slash-shortcuts-popup" :class="{ 'compact': $store.slashShortcuts.compactMode }" :style="$store.slashShortcuts.popupStyle" @mousedown.prevent @keydown.escape.stop.prevent="$store.slashShortcuts.close()">
+            <div class="slash-shortcuts-header">
+              <span class="slash-shortcuts-title">Shortcuts</span>
+              <span class="slash-shortcuts-query" x-text="$store.slashShortcuts.currentQueryDisplay"></span>
+            </div>
+
+            <template x-if="$store.slashShortcuts.filteredCommands.length === 0">
+              <div class="slash-shortcuts-empty">
+                <div>No matching shortcuts</div>
+                <button type="button" class="slash-shortcuts-create" @mousedown.prevent="$store.slashShortcuts.openCreateShortcut()">Create this shortcut</button>
+              </div>
+            </template>
+
+            <template x-for="(item, index) in $store.slashShortcuts.filteredCommands" :key="item._id || index">
+              <button type="button" class="slash-shortcuts-item" :class="{ 'active': index === $store.slashShortcuts.selectedIndex }" @mouseenter="$store.slashShortcuts.setSelectedIndex(index)" @mousedown.prevent="$store.slashShortcuts.applyByIndex(index)">
+                <div class="slash-shortcuts-item-main">
+                  <span class="slash-shortcuts-trigger" x-text="'/' + (item.command || '')"></span>
+                  <span class="slash-shortcuts-label" x-text="item.display_label || item.command || ''"></span>
+                  <span class="slash-shortcuts-scope" x-show="item.scope_label" x-text="item.scope_label || ''"></span>
+                </div>
+                <div class="slash-shortcuts-description" x-show="$store.slashShortcuts.showDescriptions && item.description" x-text="item.description || ''"></div>
+                <div class="slash-shortcuts-arg-hint" x-show="item.argument_hint" x-text="item.argument_hint || ''"></div>
+              </button>
+            </template>
+
+            <button type="button" class="slash-shortcuts-footer-action" @mousedown.prevent="$store.slashShortcuts.openCreateShortcut()">
+              <span class="material-symbols-outlined">add</span>
+              <span>Add shortcut</span>
+            </button>
+          </div>
+        </template>
+      </div>
+    </template>
+  </div>
+
+  <style>
+    .slash-shortcuts-root{display:contents}.slash-shortcuts-popup{position:fixed;z-index:3000;overflow-y:auto;border:1px solid var(--color-border);border-radius:10px;background:color-mix(in srgb,var(--color-panel) 96%,black 4%);box-shadow:0 10px 24px rgba(0,0,0,.28);backdrop-filter:blur(8px)}.slash-shortcuts-header{display:flex;justify-content:space-between;align-items:center;gap:.75rem;padding:.45rem .65rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:color-mix(in srgb,var(--color-panel) 97%,black 3%);z-index:1}.slash-shortcuts-title{font-size:.76rem;font-weight:700;letter-spacing:.02em;color:var(--color-text)}.slash-shortcuts-query{font-size:.7rem;color:var(--color-text-muted);font-family:"Roboto Mono",monospace}.slash-shortcuts-empty{padding:.8rem;color:var(--color-text-muted);font-size:.8rem;display:flex;flex-direction:column;gap:.55rem}.slash-shortcuts-create{align-self:flex-start;border:1px solid var(--color-border);border-radius:8px;padding:.35rem .55rem;background:transparent;color:var(--color-text);cursor:pointer}.slash-shortcuts-item{width:100%;text-align:left;border:0;background:transparent;color:var(--color-text);padding:.58rem .7rem;display:flex;flex-direction:column;gap:.22rem;cursor:pointer;border-bottom:1px solid color-mix(in srgb,var(--color-border) 72%,transparent 28%);transition:background .12s ease}.slash-shortcuts-popup.compact .slash-shortcuts-item{padding:.42rem .6rem;gap:.12rem}.slash-shortcuts-item:last-child{border-bottom:0}.slash-shortcuts-item:hover,.slash-shortcuts-item.active{background:color-mix(in srgb,#4248f1 14%,var(--color-panel) 86%)}.slash-shortcuts-item-main{display:flex;align-items:center;gap:.55rem;min-width:0;flex-wrap:wrap}.slash-shortcuts-trigger{font-family:"Roboto Mono",monospace;font-size:.8rem;color:#8ba4ff;flex-shrink:0;font-weight:700}.slash-shortcuts-label{font-size:.84rem;font-weight:700;color:var(--color-text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.slash-shortcuts-scope{display:inline-flex;align-items:center;padding:.12rem .42rem;border-radius:999px;font-size:.66rem;font-weight:700;line-height:1.2;background:color-mix(in srgb,var(--color-highlight) 12%,transparent);border:1px solid color-mix(in srgb,var(--color-highlight) 24%,transparent);color:var(--color-text-secondary);margin-left:auto;flex-shrink:0}.slash-shortcuts-description{font-size:.72rem;color:var(--color-text-muted)}.slash-shortcuts-arg-hint{font-size:.69rem;color:#8ba4ff;font-family:"Roboto Mono",monospace}.slash-shortcuts-footer-action{width:100%;display:flex;align-items:center;justify-content:center;gap:.45rem;border:0;border-top:1px solid var(--color-border);background:color-mix(in srgb,var(--color-panel) 92%,transparent);color:var(--color-text);padding:.58rem .7rem;cursor:pointer;font-weight:700}.slash-shortcuts-footer-action:hover{background:color-mix(in srgb,#4248f1 14%,var(--color-panel) 86%)}.slash-shortcuts-footer-action .material-symbols-outlined{font-size:1rem}
+  </style>
+</body>
+</html>

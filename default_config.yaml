@@ -1,0 +1,10 @@
+enabled: true
+keep_popup_open_after_insert: false
+show_descriptions: true
+max_visible_items: 7
+popup_offset_y: 14
+popup_offset_x: 0
+popup_width: 320
+compact_mode: false
+match_descriptions: true
+popup_height: 220

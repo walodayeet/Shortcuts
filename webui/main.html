@@ -1,0 +1,97 @@
+<html>
+<head>
+  <title>Shortcuts</title>
+  <script type="module">
+    import { store } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.3.1";
+  </script>
+</head>
+<body>
+  <div x-data>
+    <template x-if="$store.slashShortcutsManager">
+      <div class="ss-manager" x-create="$store.slashShortcutsManager.onOpen()" x-destroy="$store.slashShortcutsManager.cleanup()">
+        <div class="ss-toolbar">
+          <div class="ss-toolbar-copy">
+            <div class="ss-title">Shortcuts</div>
+            <div class="ss-subtitle">Scope-aware reusable shortcuts with inline multi-command expansion.</div>
+          </div>
+          <div class="ss-toolbar-controls">
+            <label class="ss-select">
+              <span>Project</span>
+              <select x-model="$store.slashShortcutsManager.projectName" @change="$store.slashShortcutsManager.onScopeChanged()">
+                <option value="">Global</option>
+                <template x-for="project in $store.slashShortcutsManager.projects" :key="project.key">
+                  <option :value="project.key" x-text="project.label"></option>
+                </template>
+              </select>
+            </label>
+            <label class="ss-select">
+              <span>Agent profile</span>
+              <select x-model="$store.slashShortcutsManager.agentProfile" @change="$store.slashShortcutsManager.onScopeChanged()">
+                <option value="">None</option>
+                <template x-for="profile in $store.slashShortcutsManager.agentProfiles" :key="profile.key">
+                  <option :value="profile.key" x-text="profile.label"></option>
+                </template>
+              </select>
+            </label>
+            <div class="ss-toolbar-actions">
+              <button type="button" class="button secondary" @click="$store.slashShortcutsManager.refresh()"><span class="material-symbols-outlined">refresh</span><span>Refresh</span></button>
+              <button type="button" class="button secondary" @click="$store.slashShortcutsManager.browseScopeFolder()"><span class="material-symbols-outlined">folder_open</span><span>Browse Scope Folder</span></button>
+              <button type="button" class="button primary" @click="$store.slashShortcutsManager.openCreateShortcut()"><span class="material-symbols-outlined">add</span><span>Create Shortcut</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ss-scope-banner" x-show="$store.slashShortcutsManager.scope">
+          <div class="ss-scope-banner-label"><span class="material-symbols-outlined">target</span><span x-text="$store.slashShortcutsManager.selectedScopeLabel"></span></div>
+          <div class="ss-scope-banner-path" x-text="$store.slashShortcutsManager.selectedScopeDirectory"></div>
+        </div>
+
+        <div class="ss-loading" x-show="$store.slashShortcutsManager.loading"><span class="material-symbols-outlined spinning">progress_activity</span><span>Loading shortcuts...</span></div>
+
+        <div class="ss-list" x-show="!$store.slashShortcutsManager.loading">
+          <template x-if="$store.slashShortcutsManager.hasShortcuts">
+            <div class="ss-grid">
+              <template x-for="shortcut in $store.slashShortcutsManager.shortcuts" :key="shortcut.path">
+                <article class="ss-card">
+                  <div class="ss-card-header">
+                    <div class="ss-card-copy">
+                      <div class="ss-card-title"><span class="ss-slash">/</span><span x-text="shortcut.command"></span></div>
+                      <div class="ss-card-description" x-text="shortcut.description"></div>
+                    </div>
+                    <div class="ss-card-actions">
+                      <button type="button" class="button icon" title="Edit shortcut" @click="$store.slashShortcutsManager.openEditShortcut(shortcut)"><span class="material-symbols-outlined">edit</span></button>
+                      <button type="button" class="button icon" title="Duplicate shortcut" @click="$store.slashShortcutsManager.duplicateShortcut(shortcut)"><span class="material-symbols-outlined">content_copy</span></button>
+                      <button type="button" class="button icon danger" title="Delete shortcut" @click.stop="$confirmClick($event, () => $store.slashShortcutsManager.deleteShortcut(shortcut))"><span class="material-symbols-outlined">delete</span></button>
+                    </div>
+                  </div>
+                  <div class="ss-card-badges">
+                    <span class="ss-badge scope" x-text="shortcut.scope_label"></span>
+                    <template x-if="shortcut.override_count">
+                      <span class="ss-badge override" x-text="$store.slashShortcutsManager.overrideBadgeLabel(shortcut)"></span>
+                    </template>
+                  </div>
+                  <template x-if="shortcut.display_label">
+                    <div class="ss-card-label"><span class="material-symbols-outlined">title</span><span x-text="shortcut.display_label"></span></div>
+                  </template>
+                  <div class="ss-card-path" x-text="shortcut.path"></div>
+                </article>
+              </template>
+            </div>
+          </template>
+          <template x-if="!$store.slashShortcutsManager.hasShortcuts">
+            <div class="ss-empty-state">
+              <div class="ss-empty-title">No shortcuts in this scope yet.</div>
+              <div class="ss-empty-copy">Create scoped slash shortcuts here. They will appear from <code>/</code> in chat and can be used multiple times in one message.</div>
+              <button type="button" class="button primary" @click="$store.slashShortcutsManager.openCreateShortcut()"><span class="material-symbols-outlined">add</span><span>Create Shortcut</span></button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <style>
+    .ss-manager,.ss-toolbar,.ss-toolbar-copy,.ss-select{display:flex;flex-direction:column}.ss-manager{gap:1rem;padding:1rem}.ss-toolbar{gap:1rem;padding:1rem;border:1px solid var(--color-border);border-radius:12px;background:color-mix(in srgb,var(--color-panel) 88%,transparent)}.ss-title{font-size:1.1rem;font-weight:600}.ss-subtitle,.ss-scope-banner-path,.ss-card-description,.ss-card-path,.ss-empty-copy{color:var(--color-text-secondary)}.ss-toolbar-controls{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end}.ss-select{gap:.35rem;min-width:14rem;flex:1 1 14rem}.ss-select span{font-size:.82rem;font-weight:600;color:var(--color-text-secondary)}.ss-toolbar-actions,.ss-card-actions,.ss-card-badges{display:flex;flex-wrap:wrap;gap:.5rem}.ss-toolbar-actions{margin-left:auto}.ss-scope-banner{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;padding:.85rem 1rem;border:1px solid var(--color-border);border-radius:12px;background:color-mix(in srgb,var(--color-background) 84%,var(--color-panel))}.ss-scope-banner-label,.ss-card-label{display:inline-flex;align-items:center;gap:.45rem;font-weight:600}.ss-loading{display:flex;align-items:center;gap:.5rem;padding:.9rem 1rem;color:var(--color-text-secondary);border:1px dashed var(--color-border);border-radius:10px}.ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:.9rem}.ss-card{display:flex;flex-direction:column;gap:.75rem;padding:1rem;border:1px solid var(--color-border);border-radius:12px;background:color-mix(in srgb,var(--color-panel) 90%,transparent)}.ss-card-header{display:flex;gap:.75rem;justify-content:space-between;align-items:flex-start}.ss-card-title{font-size:1rem;font-weight:600;word-break:break-word}.ss-slash{color:var(--color-highlight)}.ss-badge{display:inline-flex;align-items:center;padding:.22rem .5rem;border-radius:999px;font-size:.74rem;font-weight:600;border:1px solid transparent}.ss-badge.scope{background:color-mix(in srgb,var(--color-highlight) 12%,transparent);border-color:color-mix(in srgb,var(--color-highlight) 24%,transparent)}.ss-badge.override{background:color-mix(in srgb,#f39c12 12%,transparent);border-color:color-mix(in srgb,#f39c12 28%,transparent)}.ss-card-path,.ss-scope-banner-path{font-family:"Roboto Mono",monospace;font-size:.82rem;word-break:break-all}.ss-empty-state{display:flex;flex-direction:column;gap:.85rem;padding:1.2rem;border:1px dashed var(--color-border);border-radius:12px}.ss-empty-title{font-size:1rem;font-weight:600}
+  </style>
+</body>
+</html>
