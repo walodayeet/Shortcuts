@@ -1,7 +1,7 @@
 ---
 name: summarize
-description: Ask for a concise summary of the current topic
+description: Summarize the current topic concisely
 display_label: Summarize
 ---
 
-Summarize the user's request or the current context concisely and clearly.
+Summarize the current topic concisely and clearly.

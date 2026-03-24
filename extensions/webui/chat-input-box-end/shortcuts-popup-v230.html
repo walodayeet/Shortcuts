@@ -28,7 +28,7 @@
                   <span class="slash-shortcuts-scope" x-show="item.scope_label" x-text="item.scope_label || ''"></span>
                 </div>
                 <div class="slash-shortcuts-description" x-show="$store.slashShortcuts.showDescriptions && item.description" x-text="item.description || ''"></div>
-                <div class="slash-shortcuts-arg-hint" x-show="item.argument_hint" x-text="item.argument_hint || ''"></div>
+                <div class="slash-shortcuts-arg-hint" x-show="item.argument_hint" x-text="'Argument hint: ' + (item.argument_hint || '')"></div>
               </button>
             </template>
 
