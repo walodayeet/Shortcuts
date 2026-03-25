@@ -128,7 +128,7 @@ function parseShortcutInvocations(message, commands) {
   const commandMap = new Map((commands || []).map((item) => [String(item.command || "").toLowerCase(), item]));
   const matches = [];
   const marker = escapeRegExp(ACCEPT_MARKER);
-  const regex = new RegExp(`(^|[\s([{"'])\/([A-Za-z0-9_-]+)${marker}(?:\(([^)]*)\))?(?=$|[\s)\]}\",.!?:;])`, "g");
+  const regex = new RegExp(`(^|[\\s([{"'])\\/([A-Za-z0-9_-]+)(?:${marker})?(?:\\(([^)]*)\\))?(?=$|[\\s)\\]}\",.!?:;])`, "g");
   let match;
 
   while ((match = regex.exec(text)) !== null) {
@@ -162,11 +162,15 @@ export function buildExpandedMessage(message, matchedCommands) {
   const chunks = [];
   let cursor = 0;
 
-  for (const invocation of invocations) {
+  for (let index = 0; index < invocations.length; index += 1) {
+    const invocation = invocations[index];
     const start = Number(invocation?.start ?? -1);
     const end = Number(invocation?.end ?? -1);
     if (start < 0 || end < start || start < cursor) continue;
-    chunks.push(text.slice(cursor, start));
+    const chunk = text.slice(cursor, start);
+    const normalizedChunk = chunk.replace(/\s+/g, " ").trim().toLowerCase();
+    const isConnectorOnly = index > 0 && ["and", "then", "and then", "&", ",", ";"].includes(normalizedChunk);
+    if (!isConnectorOnly) chunks.push(chunk);
     cursor = end;
   }
   chunks.push(text.slice(cursor));

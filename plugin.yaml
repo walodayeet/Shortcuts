@@ -1,7 +1,7 @@
 name: slash_shortcuts
 title: Shortcuts
 description: Scope-aware shortcuts with inline multi-command expansion and a dedicated manager UI.
-version: 2.3.1
+version: 2.3.7
 settings_sections:
   - agent
 per_project_config: true

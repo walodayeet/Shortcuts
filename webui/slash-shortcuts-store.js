@@ -1,7 +1,7 @@
 import { createStore } from "/js/AlpineStore.js";
 import { toastFrontendError, toastFrontendInfo } from "/components/notifications/notification-store.js";
-import { ACCEPT_MARKER, DEFAULT_CONFIG, buildExpandedMessage, detectCommandsInMessage, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.3.1";
-import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.3.1";
+import { ACCEPT_MARKER, DEFAULT_CONFIG, buildExpandedMessage, detectCommandsInMessage, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.3.7";
+import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.3.7";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -473,8 +473,7 @@ export const store = createStore("slashShortcuts", {
       : defaultTrailingText;
     const before = value.slice(0, token.start);
     const after = value.slice(token.end);
-    const safeTrailingText = trailingText && (after.startsWith(" ") || after.startsWith("
-")) ? "" : trailingText;
+    const safeTrailingText = trailingText && (after.startsWith(" ") || after.startsWith("\n")) ? "" : trailingText;
     const nextValue = `${before}${insertedCommand}${safeTrailingText}${after}`;
     const nextCaret = supportsArguments && !safeTrailingText
       ? (before + `/${item.command}${ACCEPT_MARKER}(`).length
