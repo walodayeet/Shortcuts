@@ -151,16 +151,6 @@ It helps with:
 - using `$0..$9` intentionally
 - designing reusable shortcut templates
 
-## Prompt injection file
-
-This plugin now also includes a prompt injection file:
-- `/a0/usr/plugins/slash_shortcuts/prompts/shortcuts_system.md`
-
-That prompt helps agents understand:
-- Shortcuts syntax
-- argument usage
-- scope rules
-- shortcut design conventions
 
 ## Notes
 
