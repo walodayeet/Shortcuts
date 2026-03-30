@@ -17,6 +17,8 @@ export const DEFAULT_CONFIG = {
   match_descriptions: true,
 };
 
+const MAX_NESTED_EXPANSION_DEPTH = 8;
+
 function titleCaseFromCommand(command) {
   return String(command || "")
     .split(/[_\-\s]+/)
@@ -32,6 +34,124 @@ function replaceAllLiteral(text, needle, replacement) {
 function splitArguments(rawArguments) {
   const matches = String(rawArguments || "").match(/"[^"]*"|'[^']*'|\S+/g) || [];
   return matches.map((token) => token.replace(/^['"]|['"]$/g, ""));
+}
+
+function normalizeExpandedText(text) {
+  return String(text ?? "")
+    .split(ACCEPT_MARKER).join("")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/ +([,.;:!?])/g, "$1")
+    .trim();
+}
+
+function isCommandCharacter(char) {
+  return /[A-Za-z0-9_-]/.test(String(char || ""));
+}
+
+function isPrefixBoundary(text, slashIndex) {
+  if (slashIndex <= 0) return true;
+  return /[\s([{"']/.test(text.charAt(slashIndex - 1));
+}
+
+function isSuffixBoundary(text, index) {
+  if (index >= text.length) return true;
+  return /[\s)\]}\",.!?:;]/.test(text.charAt(index));
+}
+
+function readBalancedParentheses(text, startIndex) {
+  if (text.charAt(startIndex) !== "(") return null;
+
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) quote = "";
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          content: text.slice(startIndex + 1, index),
+          end: index + 1,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function getTopLevelInvocations(matchedCommands) {
+  const sorted = [...(matchedCommands || [])].sort((a, b) => {
+    const startDelta = Number(a?.start ?? -1) - Number(b?.start ?? -1);
+    if (startDelta !== 0) return startDelta;
+    return Number(b?.end ?? -1) - Number(a?.end ?? -1);
+  });
+
+  const topLevel = [];
+  const stack = [];
+
+  for (const invocation of sorted) {
+    const start = Number(invocation?.start ?? -1);
+    const end = Number(invocation?.end ?? -1);
+    if (start < 0 || end < start) continue;
+
+    while (stack.length && start >= Number(stack[stack.length - 1]?.end ?? -1)) {
+      stack.pop();
+    }
+
+    if (!stack.length) {
+      topLevel.push(invocation);
+    }
+
+    stack.push(invocation);
+  }
+
+  return topLevel;
+}
+
+function deriveAvailableCommands(matchedCommands) {
+  return Array.from(new Map((matchedCommands || [])
+    .filter((item) => item?.command)
+    .map((item) => [String(item.command || "").toLowerCase(), item])).values());
+}
+
+function expandNestedArguments(rawArguments, availableCommands, depth = 0) {
+  const text = String(rawArguments || "").trim();
+  if (!text || depth >= MAX_NESTED_EXPANSION_DEPTH) return text;
+
+  const nestedMatches = detectCommandsInMessage(text, availableCommands);
+  if (!nestedMatches.length) return text;
+
+  return buildExpandedMessageInternal(text, nestedMatches, availableCommands, depth + 1);
 }
 
 export function renderShortcutTemplate(instruction, rawArguments) {
@@ -119,32 +239,75 @@ export async function loadEffectiveShortcuts() {
   };
 }
 
-function escapeRegExp(text) {
-  return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function parseShortcutInvocations(message, commands) {
+function parseShortcutInvocations(message, commands, baseOffset = 0) {
   const text = String(message ?? "");
   const commandMap = new Map((commands || []).map((item) => [String(item.command || "").toLowerCase(), item]));
   const matches = [];
-  const marker = escapeRegExp(ACCEPT_MARKER);
-  const regex = new RegExp(`(^|[\\s([{"'])\\/([A-Za-z0-9_-]+)(?:${marker})?(?:\\(([^)]*)\\))?(?=$|[\\s)\\]}\",.!?:;])`, "g");
-  let match;
 
-  while ((match = regex.exec(text)) !== null) {
-    const key = String(match[2] || "").toLowerCase();
-    const item = commandMap.get(key);
-    if (!item) continue;
+  let index = 0;
+  while (index < text.length) {
+    const slashIndex = text.indexOf("/", index);
+    if (slashIndex === -1) break;
 
-    const prefix = String(match[1] || "");
-    const start = match.index + prefix.length;
-    const end = regex.lastIndex;
+    if (!isPrefixBoundary(text, slashIndex)) {
+      index = slashIndex + 1;
+      continue;
+    }
+
+    let cursor = slashIndex + 1;
+    let command = "";
+    while (cursor < text.length && isCommandCharacter(text.charAt(cursor))) {
+      command += text.charAt(cursor);
+      cursor += 1;
+    }
+
+    if (!command) {
+      index = slashIndex + 1;
+      continue;
+    }
+
+    if (text.startsWith(ACCEPT_MARKER, cursor)) {
+      cursor += ACCEPT_MARKER.length;
+    }
+
+    const item = commandMap.get(command.toLowerCase());
+    if (!item) {
+      index = slashIndex + 1;
+      continue;
+    }
+
+    let rawArguments = "";
+    if (text.charAt(cursor) === "(") {
+      const parsed = readBalancedParentheses(text, cursor);
+      if (!parsed) {
+        index = slashIndex + 1;
+        continue;
+      }
+      rawArguments = String(parsed.content || "").trim();
+      const nestedMatches = parseShortcutInvocations(parsed.content, commands, baseOffset + cursor + 1);
+      matches.push({
+        ...item,
+        raw_arguments: rawArguments,
+        start: baseOffset + slashIndex,
+        end: baseOffset + parsed.end,
+      });
+      matches.push(...nestedMatches);
+      index = parsed.end;
+      continue;
+    }
+
+    if (!isSuffixBoundary(text, cursor)) {
+      index = slashIndex + 1;
+      continue;
+    }
+
     matches.push({
       ...item,
-      raw_arguments: String(match[3] || "").trim(),
-      start,
-      end,
+      raw_arguments: rawArguments,
+      start: baseOffset + slashIndex,
+      end: baseOffset + cursor,
     });
+    index = cursor;
   }
 
   return matches;
@@ -154,11 +317,13 @@ export function detectCommandsInMessage(message, commands) {
   return parseShortcutInvocations(message, commands);
 }
 
-export function buildExpandedMessage(message, matchedCommands) {
+function buildExpandedMessageInternal(message, matchedCommands, availableCommands, depth = 0) {
   const text = String(message ?? "");
-  if (!matchedCommands?.length) return text.trim();
+  if (!matchedCommands?.length) return normalizeExpandedText(text);
 
-  const invocations = [...matchedCommands].sort((a, b) => a.start - b.start);
+  const invocations = getTopLevelInvocations(matchedCommands);
+  if (!invocations.length) return normalizeExpandedText(text);
+
   const chunks = [];
   let cursor = 0;
 
@@ -175,15 +340,13 @@ export function buildExpandedMessage(message, matchedCommands) {
   }
   chunks.push(text.slice(cursor));
 
-  const base = chunks.join("")
-    .split(ACCEPT_MARKER).join("")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/ *\n */g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const base = normalizeExpandedText(chunks.join(""));
 
   const instructionText = invocations
-    .map((item) => renderShortcutTemplate(item.instruction, item.raw_arguments))
+    .map((item) => {
+      const expandedArguments = expandNestedArguments(item.raw_arguments, availableCommands, depth);
+      return renderShortcutTemplate(item.instruction, expandedArguments);
+    })
     .filter(Boolean)
     .join(" ")
     .replace(/[ \t]{2,}/g, " ")
@@ -196,4 +359,8 @@ export function buildExpandedMessage(message, matchedCommands) {
     .replace(/[ \t]{2,}/g, " ")
     .replace(/ +([,.;:!?])/g, "$1")
     .trim();
+}
+
+export function buildExpandedMessage(message, matchedCommands) {
+  return buildExpandedMessageInternal(message, matchedCommands, deriveAvailableCommands(matchedCommands), 0);
 }

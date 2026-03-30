@@ -2,7 +2,7 @@
 <head>
   <title>Shortcuts</title>
   <script type="module">
-    import { store } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.3.7";
+    import { store } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.4.0";
   </script>
 </head>
 <body>
@@ -12,7 +12,7 @@
         <div class="ss-toolbar">
           <div class="ss-toolbar-copy">
             <div class="ss-title">Shortcuts</div>
-            <div class="ss-subtitle">Scope-aware reusable shortcuts with inline multi-command expansion.</div>
+            <div class="ss-subtitle">Reusable shortcuts with global and project scope.</div>
           </div>
           <div class="ss-toolbar-controls">
             <label class="ss-select">
@@ -21,15 +21,6 @@
                 <option value="">Global</option>
                 <template x-for="project in $store.slashShortcutsManager.projects" :key="project.key">
                   <option :value="project.key" x-text="project.label"></option>
-                </template>
-              </select>
-            </label>
-            <label class="ss-select">
-              <span>Agent profile</span>
-              <select x-model="$store.slashShortcutsManager.agentProfile" @change="$store.slashShortcutsManager.onScopeChanged()">
-                <option value="">None</option>
-                <template x-for="profile in $store.slashShortcutsManager.agentProfiles" :key="profile.key">
-                  <option :value="profile.key" x-text="profile.label"></option>
                 </template>
               </select>
             </label>
@@ -90,7 +81,7 @@
           <template x-if="!$store.slashShortcutsManager.hasShortcuts">
             <div class="ss-empty-state">
               <div class="ss-empty-title">No shortcuts in this scope yet.</div>
-              <div class="ss-empty-copy">Create scoped slash shortcuts here. They will appear from <code>/</code> in chat and can be used multiple times in one message.</div>
+              <div class="ss-empty-copy">Create global or project slash shortcuts here. They will appear from <code>/</code> in chat and can be used multiple times in one message.</div>
               <button type="button" class="button primary" @click="$store.slashShortcutsManager.openCreateShortcut()"><span class="material-symbols-outlined">add</span><span>Create Shortcut</span></button>
             </div>
           </template>

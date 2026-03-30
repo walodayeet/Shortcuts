@@ -1,6 +1,6 @@
 # Shortcuts
 
-Scope-aware slash shortcuts for the Agent Zero chat composer.
+Project-aware slash shortcuts for the Agent Zero chat composer.
 
 ## What it does
 
@@ -9,7 +9,7 @@ Shortcuts is a prompt-composition plugin for the chat box.
 It supports:
 - reusable slash shortcuts
 - multiple shortcuts in one user message
-- scope-aware shortcut allocation
+- global and project shortcut allocation
 - explicit argument support
 - a dedicated sidebar manager
 - a popup suggestion menu in the composer
@@ -58,14 +58,10 @@ Expansion:
 Shortcuts can exist in these scopes:
 - Global
 - Project
-- Agent
-- Project + Agent
 
 Use:
 - Global for generally useful shortcuts
 - Project for project-specific workflows
-- Agent for profile-specific behavior
-- Project + Agent for highly specific combinations
 
 ## Management UX
 
@@ -74,7 +70,7 @@ Shortcuts are managed from a dedicated sidebar button.
 The plugin provides:
 - sidebar button for opening the manager
 - manager modal for CRUD operations
-- scope selectors for project and agent profile
+- scope selector for project
 - popup suggestions in the composer
 - popup scope badges
 - popup argument hints
@@ -97,6 +93,8 @@ The popup also includes:
 
 The popup Add shortcut action opens the Create Shortcut flow in Global scope.
 
+If the plugin feels empty on first install, copy a starter file from `/a0/usr/plugins/slash_shortcuts/examples/` into the active `shortcuts/` scope, or create a new shortcut directly from the manager.
+
 ## Settings
 
 Open:
@@ -118,7 +116,8 @@ Behavior settings include:
 Shortcuts are stored as markdown-backed files with frontmatter.
 
 Location pattern:
-- scoped `shortcuts/` directories under the plugin resolution path
+- runtime shortcuts load from scoped `shortcuts/` directories under the plugin resolution path
+- shipped examples live in `/a0/usr/plugins/slash_shortcuts/examples/`
 
 File suffix:
 - `.shortcut.md`
@@ -133,12 +132,14 @@ The markdown body is the instruction template.
 
 ## Included examples
 
-The plugin currently includes seeded example shortcuts such as:
+The repo ships example shortcuts in `/a0/usr/plugins/slash_shortcuts/examples/` such as:
 - `summarize`
 - `fix`
 - `review`
-- `plan`
-- `explain`
+- `tone`
+- `translate`
+
+The global `shortcuts/` scope is intentionally empty-by-default for real user edits.
 
 ## Related skill
 
@@ -157,4 +158,4 @@ It helps with:
 - Shortcuts is built for prompt composition, not random canned text.
 - Explicit shortcut acceptance matters.
 - Parenthesized argument syntax is the intended format.
-- The plugin is strongest when used for reusable, scoped prompt operators.
+- The plugin is strongest when used for reusable global and project prompt operators.

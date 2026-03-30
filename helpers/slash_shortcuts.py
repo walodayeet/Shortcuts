@@ -31,23 +31,15 @@ def shortcut_file_name(shortcut_name: str) -> str:
 
 
 def get_scope_key(project_name: str = "", agent_profile: str = "") -> str:
-    if project_name and agent_profile:
-        return "project_agent"
     if project_name:
         return "project"
-    if agent_profile:
-        return "agent"
     return "global"
 
 
 def get_scope_label(project_name: str = "", agent_profile: str = "") -> str:
     scope_key = get_scope_key(project_name, agent_profile)
-    if scope_key == "project_agent":
-        return "Project + Agent"
     if scope_key == "project":
         return "Project"
-    if scope_key == "agent":
-        return "Agent"
     return "Global"
 
 
@@ -55,7 +47,7 @@ def get_scope_directory(project_name: str = "", agent_profile: str = "") -> str:
     return plugins.determine_plugin_asset_path(
         PLUGIN_NAME,
         project_name,
-        agent_profile,
+        "",
         SHORTCUTS_DIR,
     )
 
@@ -85,7 +77,7 @@ def get_context_scope(context_id: str = "") -> dict[str, str]:
         return {"project_name": "", "agent_profile": ""}
     return {
         "project_name": projects.get_context_project_name(context) or "",
-        "agent_profile": context.agent0.config.profile or "",
+        "agent_profile": "",
     }
 
 
@@ -272,12 +264,8 @@ def _validate_shortcut_path(path: str, project_name: str = "", agent_profile: st
 
 def _iter_precedence_scopes(project_name: str, agent_profile: str) -> list[tuple[str, str]]:
     scopes: list[tuple[str, str]] = []
-    if project_name and agent_profile:
-        scopes.append((project_name, agent_profile))
     if project_name:
         scopes.append((project_name, ""))
-    if agent_profile:
-        scopes.append(("", agent_profile))
     scopes.append(("", ""))
     return scopes
 

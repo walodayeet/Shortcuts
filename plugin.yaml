@@ -1,9 +1,9 @@
 name: slash_shortcuts
 title: Shortcuts
-description: Scope-aware shortcuts with inline multi-command expansion and a dedicated manager UI.
-version: 2.3.7
+description: Project-aware shortcuts with inline multi-command expansion, empty global scope, and shipped examples in /examples.
+version: 2.4.1
 settings_sections:
   - agent
 per_project_config: true
-per_agent_config: true
+per_agent_config: false
 always_enabled: false

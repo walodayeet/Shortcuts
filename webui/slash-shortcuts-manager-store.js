@@ -73,7 +73,7 @@ const model = {
   },
 
   async onOpen() {
-    await Promise.all([this.loadProjects(), this.loadAgentProfiles()]);
+    await Promise.all([this.loadProjects()]);
     try {
       await this.resolveInitialScope();
       await this.loadShortcuts();
@@ -135,7 +135,7 @@ const model = {
     this.contextScope = scopeInfo?.context_scope || { project_name: "", agent_profile: "" };
     const preferredScope = this.pendingScope || scopeInfo?.scope || {};
     this.projectName = this.normalizeProject(preferredScope.project_name || "");
-    this.agentProfile = this.normalizeAgentProfile(preferredScope.agent_profile || "");
+    this.agentProfile = "";
     this.pendingScope = null;
   },
 
@@ -145,7 +145,6 @@ const model = {
       const response = await callJsonApi(API_PATH, {
         action: "list_scope",
         project_name: this.projectName || "",
-        agent_profile: this.agentProfile || "",
       });
       this.shortcuts = Array.isArray(response?.shortcuts) ? response.shortcuts : [];
       this.scope = response?.scope || null;
@@ -163,7 +162,7 @@ const model = {
 
   async onScopeChanged() {
     this.projectName = this.normalizeProject(this.projectName);
-    this.agentProfile = this.normalizeAgentProfile(this.agentProfile);
+    this.agentProfile = "";
     await this.loadShortcuts();
   },
 
@@ -179,7 +178,6 @@ const model = {
       const response = await callJsonApi(API_PATH, {
         action: "scope_info",
         project_name: this.projectName || "",
-        agent_profile: this.agentProfile || "",
         ensure_directory: true,
       });
       if (response?.scope?.directory_path) await fileBrowserStore.open(response.scope.directory_path);
@@ -191,8 +189,8 @@ const model = {
 
   async openCreateShortcut(options = {}) {
     if (Object.prototype.hasOwnProperty.call(options, "projectName")) this.projectName = this.normalizeProject(options.projectName || "");
-    if (Object.prototype.hasOwnProperty.call(options, "agentProfile")) this.agentProfile = this.normalizeAgentProfile(options.agentProfile || "");
-    if (Object.prototype.hasOwnProperty.call(options, "projectName") || Object.prototype.hasOwnProperty.call(options, "agentProfile")) await this.loadShortcuts();
+    this.agentProfile = "";
+    if (Object.prototype.hasOwnProperty.call(options, "projectName")) await this.loadShortcuts();
     this.editor = {
       ...createEmptyEditor(),
       mode: "create",
@@ -210,7 +208,6 @@ const model = {
         action: "get",
         path: shortcut.path,
         project_name: this.projectName || "",
-        agent_profile: this.agentProfile || "",
       });
       const loaded = response?.shortcut || shortcut;
       this.editor = {
@@ -239,7 +236,6 @@ const model = {
         action: "duplicate",
         path: shortcut.path,
         project_name: this.projectName || "",
-        agent_profile: this.agentProfile || "",
       });
       await this.loadShortcuts();
       emitShortcutsUpdated();
@@ -258,7 +254,6 @@ const model = {
         action: "delete",
         path: shortcut.path,
         project_name: this.projectName || "",
-        agent_profile: this.agentProfile || "",
       });
       await this.loadShortcuts();
       emitShortcutsUpdated();
@@ -287,7 +282,6 @@ const model = {
       const response = await callJsonApi(API_PATH, {
         action: "save",
         project_name: this.projectName || "",
-        agent_profile: this.agentProfile || "",
         existing_path: this.editor.existingPath || "",
         name: this.editor.name || "",
         description: this.editor.description || "",

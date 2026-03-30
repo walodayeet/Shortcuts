@@ -1,7 +1,7 @@
 import { createStore } from "/js/AlpineStore.js";
 import { toastFrontendError, toastFrontendInfo } from "/components/notifications/notification-store.js";
-import { ACCEPT_MARKER, DEFAULT_CONFIG, buildExpandedMessage, detectCommandsInMessage, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.3.7";
-import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.3.7";
+import { ACCEPT_MARKER, DEFAULT_CONFIG, buildExpandedMessage, detectCommandsInMessage, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.4.0";
+import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.4.0";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -320,13 +320,21 @@ export const store = createStore("slashShortcuts", {
 
   async expandCurrentInputBeforeSend() {
     try {
-      await this.reloadAll();
       const chatInputStore = window.Alpine?.store?.("chatInput");
       const currentText = String(this.inputEl?.value || chatInputStore?.message || "");
-      if (!this.config?.enabled || !currentText.trim()) return;
+      if (!currentText.trim()) return;
+      if (!currentText.includes("/") && !currentText.includes(ACCEPT_MARKER)) return;
+
+      if (!this.commands.length) {
+        await this.reloadAll();
+      }
+
+      if (!this.config?.enabled || !Array.isArray(this.commands) || !this.commands.length) return;
       const matched = detectCommandsInMessage(currentText, this.commands);
       if (!matched.length) return;
       const expanded = buildExpandedMessage(currentText, matched);
+      if (expanded === currentText) return;
+
       if (this.inputEl) {
         this.inputEl.value = expanded;
         this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
