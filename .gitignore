@@ -3,7 +3,7 @@ __pycache__/
 .toggle-*
 *.tmp
 .DS_Store
-
+/webui/thumbnail.jpg
 # Local user shortcuts
 /shortcuts/*
 !/shortcuts/

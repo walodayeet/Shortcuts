@@ -16,6 +16,16 @@ It supports:
 
 Unlike simpler slash command systems, Shortcuts is designed so multiple accepted shortcuts can participate in one message.
 
+## Important upgrade notice for older users
+
+I owe existing users a direct apology here: older versions of **Shortcuts** stored editable shortcut files inside the plugin install folder. That was the wrong design for user-owned data and it could block updates for people with lots of shortcuts.
+
+If you are upgrading from an older version and the Plugin Installer fails, **your shortcuts do not need to be lost**. Back them up first, then reinstall, then restore them using this guide:
+
+- [Backup and reinstall guide](./BACKUP_AND_REINSTALL.md)
+
+Once you are on the new layout, shipped examples live in `/examples/` and editable global shortcuts stay in `/shortcuts/`.
+
 ## Core syntax
 
 Shortcuts arguments use this syntax:
