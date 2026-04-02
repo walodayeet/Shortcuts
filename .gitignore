@@ -4,6 +4,8 @@ __pycache__/
 *.tmp
 .DS_Store
 /webui/thumbnail.jpg
+config.json
+drafts/
 # Local user shortcuts
 /shortcuts/*
 !/shortcuts/

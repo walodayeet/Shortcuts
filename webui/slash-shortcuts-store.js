@@ -1,10 +1,114 @@
 import { createStore } from "/js/AlpineStore.js";
-import { toastFrontendError, toastFrontendInfo } from "/components/notifications/notification-store.js";
-import { ACCEPT_MARKER, DEFAULT_CONFIG, buildExpandedMessage, detectCommandsInMessage, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.4.0";
-import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.4.0";
+import { toastFrontendError, toastFrontendInfo, toastFrontendSuccess } from "/components/notifications/notification-store.js";
+import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
+import { ACCEPT_MARKER, DEFAULT_CONFIG, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.4.7";
+import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.4.7";
+
+const API_PATH = "/api/plugins/slash_shortcuts/slash_shortcuts";
+const DRAFT_SCOPE_STORAGE_KEY = "slashShortcutsDraftScopeKey";
+const DRAFT_SCOPE_OPTIONS = [
+  { key: "chat", label: "Chat" },
+  { key: "project", label: "Project" },
+  { key: "global", label: "Global" },
+];
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function countWords(text) {
+  const matches = String(text || "").trim().match(/\S+/g);
+  return matches ? matches.length : 0;
+}
+
+function normalizeDraftScopeKey(scopeKey) {
+  const normalized = String(scopeKey || "").trim().toLowerCase();
+  return ["global", "project", "chat"].includes(normalized) ? normalized : "";
+}
+
+function getContextId() {
+  return chatsStore?.getSelectedChatId?.() || globalThis.getContext?.() || "";
+}
+
+async function callDraftApi(body = {}) {
+  const response = await fetch(API_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const contentType = String(response.headers.get("content-type") || "");
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : { ok: response.ok, error: await response.text() };
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || payload?.message || `Draft request failed (${response.status})`);
+  }
+  return payload;
+}
+
+function truncateDraftPreview(text, limit = 220) {
+  const normalized = String(text || "").trim().replace(/\s+/g, " ");
+  if (!normalized) return "";
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
+
+function parseDraftTimestamp(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareDraftItemsByUpdatedTime(a, b) {
+  const aUpdated = parseDraftTimestamp(a?.updated_at) || parseDraftTimestamp(a?.created_at);
+  const bUpdated = parseDraftTimestamp(b?.updated_at) || parseDraftTimestamp(b?.created_at);
+  if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+
+  const aCreated = parseDraftTimestamp(a?.created_at);
+  const bCreated = parseDraftTimestamp(b?.created_at);
+  if (aCreated !== bCreated) return bCreated - aCreated;
+
+  const aTitle = String(a?.title || a?.label || a?.id || "").toLowerCase();
+  const bTitle = String(b?.title || b?.label || b?.id || "").toLowerCase();
+  if (aTitle !== bTitle) return aTitle.localeCompare(bTitle);
+
+  return String(a?.id || "").localeCompare(String(b?.id || ""));
+}
+
+function mapDraftToPanelItem(draft) {
+  const text = String(draft?.text || "").trim();
+  const title = String(draft?.title || "").trim() || "Untitled draft";
+  const scopeLabel = String(draft?.scope_label || "").trim() || "Draft";
+  const explicitNote = String(draft?.note || "").trim();
+  return {
+    ...draft,
+    id: draft?.id || draft?.path || title,
+    kind: "draft",
+    label: title,
+    text,
+    scope_label: scopeLabel,
+    note: explicitNote || `${scopeLabel} draft. It never auto-sends. Restore it into the composer to use it.`,
+    excerpt: truncateDraftPreview(text),
+    wordCount: countWords(text),
+  };
+}
+
+function readStoredDraftScopeKey() {
+  try {
+    return normalizeDraftScopeKey(window.localStorage?.getItem(DRAFT_SCOPE_STORAGE_KEY) || "");
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredDraftScopeKey(scopeKey) {
+  const normalized = normalizeDraftScopeKey(scopeKey);
+  if (!normalized) return;
+  try {
+    window.localStorage?.setItem(DRAFT_SCOPE_STORAGE_KEY, normalized);
+  } catch {}
 }
 
 export const store = createStore("slashShortcuts", {
@@ -17,12 +121,6 @@ export const store = createStore("slashShortcuts", {
   activeToken: null,
   inputEl: null,
   bound: false,
-  originalGlobalSendMessage: null,
-  patchedGlobalSendMessage: null,
-  originalChatInputSendMessage: null,
-  patchedChatInputSendMessage: null,
-  patchRetryTimer: null,
-  patchRetryDeadline: 0,
   refreshTimer: null,
   rafHandle: null,
   blurCloseTimer: null,
@@ -30,14 +128,51 @@ export const store = createStore("slashShortcuts", {
   isInputFocused: false,
   lastViewportHeight: 0,
   cleanupFns: [],
+  pinnedDraft: null,
+  drafts: [],
+  draftScopeKey: "",
+  draftScope: null,
+  draftContextScope: { project_name: "", agent_profile: "" },
+  draftsLoading: false,
+  draftSaving: false,
+  popupView: "shortcuts",
+  manualPopup: false,
 
   init() {},
   get showDescriptions() { return !!this.config?.show_descriptions; },
   get compactMode() { return !!this.config?.compact_mode; },
-  get currentQueryDisplay() {
-    const q = this.activeToken?.query || "";
-    return q ? `/${q}` : "/";
+  get isDraftsView() { return this.popupView === "drafts"; },
+  get isShortcutsView() { return this.popupView !== "drafts"; },
+  get canUseProjectDrafts() { return !!(this.draftContextScope?.project_name || this.draftScope?.project_name); },
+  get canUseChatDrafts() { return !!(this.draftScope?.context_id || this.getCurrentContextId()); },
+  get availableDraftScopes() {
+    return DRAFT_SCOPE_OPTIONS.map((option) => ({
+      ...option,
+      enabled: option.key === "global" || (option.key === "project" ? this.canUseProjectDrafts : this.canUseChatDrafts),
+    }));
   },
+  get currentQueryDisplay() {
+    if (this.isDraftsView) {
+      const label = this.draftScope?.scope_label || "Draft";
+      return `${label} drafts are persistent and never auto-send.`;
+    }
+    const q = this.activeToken?.query || "";
+    if (q) return `/${q}`;
+    return this.manualPopup ? "Browse shortcuts" : "/";
+  },
+  get composerHasText() { return !!this.getCurrentComposerText().trim(); },
+  get hasPinnedDraft() { return this.draftPanelCount > 0; },
+  get pinnedDraftLabel() { return `${this.draftScope?.scope_label || "Draft"} Drafts`; },
+  get pinnedDraftWordCount() { return this.draftPanelItems.reduce((total, item) => total + Number(item.wordCount || 0), 0); },
+  get draftScopeLabel() { return this.draftScope?.scope_label || "Draft"; },
+  get draftScopePath() { return this.draftScope?.directory_path || ""; },
+  get draftPanelItems() {
+    return (this.drafts || [])
+      .map((draft) => mapDraftToPanelItem(draft))
+      .sort(compareDraftItemsByUpdatedTime);
+  },
+  get draftPanelCount() { return this.draftPanelItems.length; },
+  get hasDraftPanelItems() { return this.draftPanelCount > 0; },
 
   async mount() {
     if (this.bound) return;
@@ -63,6 +198,103 @@ export const store = createStore("slashShortcuts", {
       this.commands = [];
       toastFrontendError(error?.message || "Failed to load Shortcuts config", "Shortcuts");
     }
+
+    try {
+      await this.initializeDraftScope();
+    } catch (error) {
+      console.error("Failed to initialize drafts:", error);
+      this.drafts = [];
+      this.draftScope = null;
+      this.draftContextScope = { project_name: "", agent_profile: "" };
+    }
+  },
+
+  getCurrentContextId() {
+    return getContextId();
+  },
+
+  getDefaultDraftScopeKey() {
+    if (this.getCurrentContextId()) return "chat";
+    if (this.draftContextScope?.project_name || this.draftScope?.project_name) return "project";
+    return "global";
+  },
+
+  getDraftRequestScope(scopeKey = this.draftScopeKey) {
+    const normalized = normalizeDraftScopeKey(scopeKey) || this.getDefaultDraftScopeKey();
+    const payload = { scope_key: normalized };
+    const contextId = this.getCurrentContextId();
+    if (contextId) payload.context_id = contextId;
+    return payload;
+  },
+
+  getDraftPayloadFromItem(item = null) {
+    const payload = this.getDraftRequestScope(item?.scope_key || this.draftScopeKey || this.getDefaultDraftScopeKey());
+    if (item?.path) payload.path = item.path;
+    if (item?.project_name) payload.project_name = item.project_name;
+    if (item?.context_id) payload.context_id = item.context_id;
+    return payload;
+  },
+
+  async initializeDraftScope(options = {}) {
+    const { force = false, preferredScopeKey = "" } = options;
+    if (!force && this.draftScope && this.draftScopeKey) return;
+
+    const candidates = [];
+    const preferred = normalizeDraftScopeKey(preferredScopeKey || this.draftScopeKey || readStoredDraftScopeKey());
+    if (preferred) candidates.push(preferred);
+    for (const candidate of [this.getDefaultDraftScopeKey(), "chat", "project", "global"]) {
+      const normalized = normalizeDraftScopeKey(candidate);
+      if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
+    }
+
+    let lastError = null;
+    for (const candidate of candidates) {
+      try {
+        await this.selectDraftScope(candidate, { quiet: true });
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    this.draftScope = null;
+    this.drafts = [];
+    this.draftScopeKey = "";
+    if (lastError) throw lastError;
+  },
+
+  async selectDraftScope(scopeKey, options = {}) {
+    const { quiet = false } = options;
+    const normalized = normalizeDraftScopeKey(scopeKey) || this.getDefaultDraftScopeKey();
+    this.draftsLoading = true;
+    try {
+      const scopeResponse = await callDraftApi({
+        action: "draft_scope_info",
+        ...this.getDraftRequestScope(normalized),
+      });
+      this.draftContextScope = scopeResponse?.context_scope || { project_name: "", agent_profile: "" };
+      this.draftScope = scopeResponse?.scope || null;
+      this.draftScopeKey = normalizeDraftScopeKey(scopeResponse?.scope?.scope_key) || normalized;
+      writeStoredDraftScopeKey(this.draftScopeKey);
+
+      const draftsResponse = await callDraftApi({
+        action: "list_drafts",
+        ...this.getDraftRequestScope(this.draftScopeKey),
+      });
+      this.drafts = Array.isArray(draftsResponse?.drafts) ? draftsResponse.drafts : [];
+      this.reposition();
+      return this.drafts;
+    } catch (error) {
+      console.error("Failed to load drafts:", error);
+      if (!quiet) toastFrontendError(error?.message || "Failed to load Drafts.", "Shortcuts");
+      throw error;
+    } finally {
+      this.draftsLoading = false;
+    }
+  },
+
+  async refreshDrafts() {
+    await this.selectDraftScope(this.draftScopeKey || this.getDefaultDraftScopeKey(), { quiet: true });
   },
 
   scheduleInputRefresh(options = {}) {
@@ -106,7 +338,7 @@ export const store = createStore("slashShortcuts", {
     const active = document.activeElement;
     if (active === this.inputEl) return true;
     const value = String(this.inputEl?.value || "");
-    if (this.activeToken || /(?:^|[\s([{"'])\/[A-Za-z0-9_-]*$/.test(value)) return true;
+    if (this.activeToken || this.manualPopup || /(?:^|[\s([{"'])\/[A-Za-z0-9_-]*$/.test(value)) return true;
     const vv = window.visualViewport;
     if (vv && this.lastViewportHeight && vv.height < this.lastViewportHeight) return true;
     return false;
@@ -118,7 +350,7 @@ export const store = createStore("slashShortcuts", {
     this.mobileWatchTimer = window.setInterval(() => {
       if (!this.inputEl) return;
       const value = String(this.inputEl.value || "");
-      if (!value.includes("/")) return;
+      if (!value.includes("/") && !this.manualPopup) return;
       this.handleInputLikeEvent();
       this.reposition();
     }, 180);
@@ -140,7 +372,7 @@ export const store = createStore("slashShortcuts", {
 
     const onInput = (event) => {
       const inserted = String(event?.data || "");
-      if (/\s/.test(inserted) && this.activeToken) {
+      if (/\s/.test(inserted) && this.activeToken && !this.manualPopup) {
         this.close();
         return;
       }
@@ -149,7 +381,7 @@ export const store = createStore("slashShortcuts", {
     const onBeforeInput = (event) => {
       const inserted = String(event?.data || "");
       const inputType = String(event?.inputType || "");
-      if ((/\s/.test(inserted) || inputType === "insertLineBreak") && this.activeToken) {
+      if ((/\s/.test(inserted) || inputType === "insertLineBreak") && this.activeToken && !this.manualPopup) {
         this.close();
         return;
       }
@@ -241,7 +473,6 @@ export const store = createStore("slashShortcuts", {
       this.cleanupFns.push(() => visualViewport.removeEventListener("scroll", onViewportChange));
     }
 
-    this.startSendHookPatchLoop();
     this.handleInputLikeEvent();
   },
 
@@ -260,98 +491,253 @@ export const store = createStore("slashShortcuts", {
     this.cancelPendingBlurClose();
     this.stopMobileWatcher();
     this.isInputFocused = false;
-    this.stopSendHookPatchLoop();
-    this.restorePatchedSendHooks();
     this.bound = false;
     this.inputEl = null;
     this.close();
   },
 
-  startSendHookPatchLoop() {
-    this.tryPatchSendHooks();
-    this.stopSendHookPatchLoop();
-    this.patchRetryDeadline = Date.now() + 15000;
-    this.patchRetryTimer = window.setInterval(() => {
-      this.tryPatchSendHooks();
-      if (this.areSendHooksPatched() || Date.now() > this.patchRetryDeadline) this.stopSendHookPatchLoop();
-    }, 250);
-  },
-
-  stopSendHookPatchLoop() {
-    if (this.patchRetryTimer) {
-      window.clearInterval(this.patchRetryTimer);
-      this.patchRetryTimer = null;
-    }
-  },
-
-  areSendHooksPatched() {
-    return !!(this.patchedGlobalSendMessage || this.patchedChatInputSendMessage);
-  },
-
-  restorePatchedSendHooks() {
-    if (this.originalGlobalSendMessage && globalThis.sendMessage === this.patchedGlobalSendMessage) globalThis.sendMessage = this.originalGlobalSendMessage;
+  getCurrentComposerText() {
     const chatInputStore = window.Alpine?.store?.("chatInput");
-    if (this.originalChatInputSendMessage && chatInputStore?.sendMessage === this.patchedChatInputSendMessage) chatInputStore.sendMessage = this.originalChatInputSendMessage;
-    this.originalGlobalSendMessage = null;
-    this.patchedGlobalSendMessage = null;
-    this.originalChatInputSendMessage = null;
-    this.patchedChatInputSendMessage = null;
+    return String(this.inputEl?.value || chatInputStore?.message || "");
   },
 
-  tryPatchSendHooks() {
+  setComposerText(text, options = {}) {
+    const nextValue = String(text || "");
+    const { focus = false } = options;
+
+    if (!this.inputEl) {
+      this.inputEl = document.getElementById("chat-input");
+    }
+
+    if (this.inputEl) {
+      this.inputEl.value = nextValue;
+      this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
     const chatInputStore = window.Alpine?.store?.("chatInput");
-    if (!this.originalGlobalSendMessage && typeof globalThis.sendMessage === "function") {
-      this.originalGlobalSendMessage = globalThis.sendMessage;
-      this.patchedGlobalSendMessage = async (...args) => {
-        await this.expandCurrentInputBeforeSend();
-        return await this.originalGlobalSendMessage(...args);
-      };
-      globalThis.sendMessage = this.patchedGlobalSendMessage;
+    if (chatInputStore) {
+      chatInputStore.message = nextValue;
+      chatInputStore.adjustTextareaHeight?.();
     }
-    if (!this.originalChatInputSendMessage && typeof chatInputStore?.sendMessage === "function") {
-      this.originalChatInputSendMessage = chatInputStore.sendMessage.bind(chatInputStore);
-      this.patchedChatInputSendMessage = async (...args) => {
-        await this.expandCurrentInputBeforeSend();
-        return await this.originalChatInputSendMessage(...args);
-      };
-      chatInputStore.sendMessage = this.patchedChatInputSendMessage;
+
+    if (focus && this.inputEl) {
+      this.inputEl.focus();
+      const caret = nextValue.length;
+      this.inputEl.setSelectionRange?.(caret, caret);
     }
   },
 
-  async expandCurrentInputBeforeSend() {
+  focusComposer() {
+    if (!this.inputEl) {
+      this.inputEl = document.getElementById("chat-input");
+    }
+    this.inputEl?.focus();
+  },
+
+  openSharedPopup(view = "shortcuts") {
+    if (!this.inputEl) {
+      this.inputEl = document.getElementById("chat-input");
+    }
+    if (!this.inputEl) return;
+
+    this.manualPopup = true;
+    this.popupView = view === "drafts" ? "drafts" : "shortcuts";
+    this.activeToken = this.detectActiveToken();
+    if (this.isShortcutsView) {
+      this.filteredCommands = this.filterCommands(this.activeToken?.query || "");
+      this.selectedIndex = clamp(this.selectedIndex, 0, Math.max(0, this.filteredCommands.length - 1));
+    } else {
+      this.filteredCommands = [];
+      this.selectedIndex = 0;
+    }
+    this.visible = true;
+    this.reposition();
+  },
+
+  async openDraftsPopup() {
+    await this.initializeDraftScope();
+    this.openSharedPopup("drafts");
+  },
+  openShortcutsPopup() { this.openSharedPopup("shortcuts"); },
+  async switchView(view) {
+    if (view === "drafts") {
+      await this.openDraftsPopup();
+      return;
+    }
+    this.openSharedPopup("shortcuts");
+  },
+  async toggleDraftsPopup() {
+    if (this.visible && this.manualPopup && this.isDraftsView) {
+      this.close();
+      return;
+    }
+    await this.openDraftsPopup();
+  },
+
+  previewDraft(item) {
+    if (!item?.text) {
+      toastFrontendInfo("Pick a draft first.", "Shortcuts");
+      return;
+    }
+    window.alert(`${item.label} · ${item.wordCount} words\n\n${item.text}`);
+  },
+
+  async removeDraft(item) {
+    if (!item?.path) return;
     try {
-      const chatInputStore = window.Alpine?.store?.("chatInput");
-      const currentText = String(this.inputEl?.value || chatInputStore?.message || "");
-      if (!currentText.trim()) return;
-      if (!currentText.includes("/") && !currentText.includes(ACCEPT_MARKER)) return;
-
-      if (!this.commands.length) {
-        await this.reloadAll();
-      }
-
-      if (!this.config?.enabled || !Array.isArray(this.commands) || !this.commands.length) return;
-      const matched = detectCommandsInMessage(currentText, this.commands);
-      if (!matched.length) return;
-      const expanded = buildExpandedMessage(currentText, matched);
-      if (expanded === currentText) return;
-
-      if (this.inputEl) {
-        this.inputEl.value = expanded;
-        this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-      if (chatInputStore) {
-        chatInputStore.message = expanded;
-        chatInputStore.adjustTextareaHeight?.();
-      }
+      await callDraftApi({
+        action: "delete_draft",
+        ...this.getDraftPayloadFromItem(item),
+      });
+      await this.refreshDrafts();
+      toastFrontendSuccess(`Removed ${item.label}.`, "Shortcuts");
+      this.openDraftsPopup();
     } catch (error) {
-      console.error("[slash_shortcuts] pre-send expansion failed", error);
+      console.error("Failed to remove draft:", error);
+      toastFrontendError(error?.message || "Failed to remove draft.", "Shortcuts");
     }
+  },
+
+  async pinCurrentDraft() {
+    const draftText = this.getCurrentComposerText();
+    if (!draftText.trim()) {
+      toastFrontendInfo("Write something in the composer first.", "Shortcuts");
+      return;
+    }
+
+    this.draftSaving = true;
+    try {
+      await this.initializeDraftScope();
+      const response = await callDraftApi({
+        action: "save_draft",
+        ...this.getDraftRequestScope(this.draftScopeKey || this.getDefaultDraftScopeKey()),
+        text: draftText,
+      });
+      await this.refreshDrafts();
+      this.setComposerText("", { focus: true });
+      toastFrontendSuccess(`Saved draft to ${response?.draft?.scope_label || this.draftScopeLabel}.`, "Shortcuts");
+    } catch (error) {
+      console.error("Failed to save draft:", error);
+      toastFrontendError(error?.message || "Failed to save draft.", "Shortcuts");
+    } finally {
+      this.draftSaving = false;
+    }
+  },
+
+  async restoreDraft(item) {
+    if (!item?.text) {
+      toastFrontendInfo("Pick a draft first.", "Shortcuts");
+      return;
+    }
+    this.setComposerText(item.text, { focus: true });
+    try {
+      if (item?.path) {
+        await callDraftApi({
+          action: "delete_draft",
+          ...this.getDraftPayloadFromItem(item),
+        });
+        await this.refreshDrafts();
+      }
+      this.close();
+      toastFrontendSuccess(`Restored ${item.label} to the composer and removed the draft.`, "Shortcuts");
+    } catch (error) {
+      console.error("Failed to delete restored draft:", error);
+      toastFrontendError(error?.message || "Restored draft to composer, but failed to remove stored draft.", "Shortcuts");
+    }
+  },
+
+  async moveDraftToScope(item, targetScopeKey) {
+    if (!item?.text) {
+      toastFrontendInfo("Pick a draft first.", "Shortcuts");
+      return;
+    }
+    const normalizedTarget = normalizeDraftScopeKey(targetScopeKey);
+    const sourceScope = normalizeDraftScopeKey(item.scope_key || this.draftScopeKey);
+    if (!normalizedTarget) {
+      toastFrontendInfo("Pick a valid draft scope.", "Shortcuts");
+      return;
+    }
+    if (normalizedTarget === sourceScope) {
+      toastFrontendInfo("Draft is already in that scope.", "Shortcuts");
+      return;
+    }
+    try {
+      const response = await callDraftApi({
+        action: "save_draft",
+        ...this.getDraftRequestScope(normalizedTarget),
+        text: item.text,
+      });
+      if (item?.path) {
+        await callDraftApi({
+          action: "delete_draft",
+          ...this.getDraftPayloadFromItem(item),
+        });
+      }
+      await this.refreshDrafts();
+      toastFrontendSuccess(`Moved draft to ${response?.draft?.scope_label || normalizedTarget}.`, "Shortcuts");
+    } catch (error) {
+      console.error("Failed to move draft to scope:", error);
+      toastFrontendError(error?.message || "Failed to move draft to that scope.", "Shortcuts");
+    }
+  },
+
+  createShortcutFromText(text, description = "", options = {}) {
+    const normalized = String(text || "").trim();
+    if (!normalized) {
+      toastFrontendInfo("Nothing to turn into a shortcut yet.", "Shortcuts");
+      return;
+    }
+    const nextProjectName = Object.prototype.hasOwnProperty.call(options, "projectName")
+      ? String(options.projectName || "")
+      : undefined;
+    this.close();
+    slashShortcutsManagerStore.openManager({
+      openEditor: true,
+      prefillInstruction: normalized,
+      prefillDescription: description,
+      ...(nextProjectName !== undefined ? { projectName: nextProjectName } : {}),
+    });
+  },
+
+  createShortcutFromDraft(item) {
+    if (!item?.text) {
+      toastFrontendInfo("Pick a draft first.", "Shortcuts");
+      return;
+    }
+    const projectName = item.scope_key === "global"
+      ? ""
+      : (item.project_name || this.draftContextScope?.project_name || "");
+    if (item.scope_key === "chat") {
+      toastFrontendInfo("Chat drafts open in the current project shortcut scope because chat-only shortcuts do not exist yet.", "Shortcuts");
+    }
+    this.createShortcutFromText(
+      item.text,
+      `Create shortcut from ${String(item.scope_label || "draft").toLowerCase()} draft.`,
+      { projectName },
+    );
   },
 
   handleInputLikeEvent() {
-    if (!this.config?.enabled || !this.inputEl) { this.close(); return; }
+    if (!this.inputEl) { this.close(); return; }
+
+    if (this.manualPopup) {
+      this.activeToken = this.detectActiveToken();
+      if (this.isShortcutsView) {
+        this.filteredCommands = this.filterCommands(this.activeToken?.query || "");
+        this.selectedIndex = clamp(this.selectedIndex, 0, Math.max(0, this.filteredCommands.length - 1));
+      } else {
+        this.filteredCommands = [];
+        this.selectedIndex = 0;
+      }
+      this.visible = true;
+      this.reposition();
+      return;
+    }
+
+    if (!this.config?.enabled) { this.close(); return; }
     const token = this.detectActiveToken();
     if (!token) { this.close(); return; }
+    this.popupView = "shortcuts";
     this.activeToken = token;
     this.filteredCommands = this.filterCommands(token.query);
     if (!this.filteredCommands.length) {
@@ -425,6 +811,12 @@ export const store = createStore("slashShortcuts", {
 
   handleKeydown(event) {
     if (!this.visible) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.close();
+      return;
+    }
+    if (!this.isShortcutsView) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (this.filteredCommands.length) this.selectedIndex = (this.selectedIndex + 1) % this.filteredCommands.length;
@@ -444,17 +836,12 @@ export const store = createStore("slashShortcuts", {
       }
       return;
     }
-    if (event.key === " ") {
+    if (event.key === " " && !this.manualPopup) {
       this.activeToken = null;
       this.close();
       return;
     }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      this.close();
-      return;
-    }
-    if (event.key === "Backspace" && !this.filteredCommands.length && !this.activeToken?.query) {
+    if (event.key === "Backspace" && !this.manualPopup && !this.filteredCommands.length && !this.activeToken?.query) {
       this.close();
     }
   },
@@ -462,40 +849,62 @@ export const store = createStore("slashShortcuts", {
   setSelectedIndex(index) { this.selectedIndex = index; },
 
   openCreateShortcut() {
-    slashShortcutsManagerStore.openManager({ projectName: "", agentProfile: "", prefillName: this.activeToken?.query || "", openEditor: true });
+    slashShortcutsManagerStore.openManager({
+      prefillName: this.activeToken?.query || "",
+      openEditor: true,
+    });
     this.close();
   },
 
   applyByIndex(index, options = {}) {
     const item = this.filteredCommands[index];
-    if (!item || !this.inputEl) return;
-    const value = this.inputEl.value || "";
-    const token = this.activeToken || this.detectActiveToken();
-    if (!token) return;
+    if (!item) return;
+    if (!this.inputEl) {
+      this.inputEl = document.getElementById("chat-input");
+    }
+    if (!this.inputEl) return;
 
+    const value = String(this.inputEl.value || "");
+    const token = this.activeToken || this.detectActiveToken();
     const supportsArguments = !!item.argument_hint || /[$]ARGUMENTS|[$][0-9]/.test(String(item.instruction || ""));
     const insertedCommand = supportsArguments ? `/${item.command}${ACCEPT_MARKER}()` : `/${item.command}${ACCEPT_MARKER}`;
     const defaultTrailingText = supportsArguments ? "" : " ";
     const trailingText = Object.prototype.hasOwnProperty.call(options, "trailingText")
       ? String(options.trailingText || "")
       : defaultTrailingText;
-    const before = value.slice(0, token.start);
-    const after = value.slice(token.end);
-    const safeTrailingText = trailingText && (after.startsWith(" ") || after.startsWith("\n")) ? "" : trailingText;
-    const nextValue = `${before}${insertedCommand}${safeTrailingText}${after}`;
-    const nextCaret = supportsArguments && !safeTrailingText
-      ? (before + `/${item.command}${ACCEPT_MARKER}(`).length
-      : (before + insertedCommand + safeTrailingText).length;
 
-    this.inputEl.value = nextValue;
-    if (window.Alpine?.store?.("chatInput")) {
-      window.Alpine.store("chatInput").message = nextValue;
-      window.Alpine.store("chatInput").adjustTextareaHeight?.();
+    let before = "";
+    let after = "";
+    let nextCaret = 0;
+
+    if (token) {
+      before = value.slice(0, token.start);
+      after = value.slice(token.end);
+      const safeTrailingText = trailingText && (after.startsWith(" ") || after.startsWith("\n")) ? "" : trailingText;
+      const nextValue = `${before}${insertedCommand}${safeTrailingText}${after}`;
+      nextCaret = supportsArguments && !safeTrailingText
+        ? (before + `/${item.command}${ACCEPT_MARKER}(`).length
+        : (before + insertedCommand + safeTrailingText).length;
+      this.setComposerText(nextValue);
+      this.focusComposer();
+      this.inputEl.setSelectionRange?.(nextCaret, nextCaret);
+    } else {
+      const caret = typeof this.inputEl.selectionStart === "number" ? this.inputEl.selectionStart : value.length;
+      before = value.slice(0, caret);
+      after = value.slice(caret);
+      const needsLeadingSpace = before && !/[\s([{"']$/.test(before);
+      const safeLeadingText = needsLeadingSpace ? " " : "";
+      const safeTrailingText = trailingText && (after.startsWith(" ") || after.startsWith("\n")) ? "" : trailingText;
+      const nextValue = `${before}${safeLeadingText}${insertedCommand}${safeTrailingText}${after}`;
+      nextCaret = supportsArguments && !safeTrailingText
+        ? (before + safeLeadingText + `/${item.command}${ACCEPT_MARKER}(`).length
+        : (before + safeLeadingText + insertedCommand + safeTrailingText).length;
+      this.setComposerText(nextValue);
+      this.focusComposer();
+      this.inputEl.setSelectionRange?.(nextCaret, nextCaret);
     }
-    this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-    this.inputEl.focus();
-    this.inputEl.setSelectionRange(nextCaret, nextCaret);
-    if (this.config?.keep_popup_open_after_insert) this.handleInputLikeEvent();
+
+    if (this.manualPopup || this.config?.keep_popup_open_after_insert) this.openShortcutsPopup();
     else this.close();
   },
 
@@ -510,16 +919,16 @@ export const store = createStore("slashShortcuts", {
     const viewportHeight = vv?.height || window.innerHeight;
     const viewportLeft = vv?.offsetLeft || 0;
     const viewportTop = vv?.offsetTop || 0;
-    const width = clamp(parseInt(this.config?.popup_width || 320, 10) || 320, 220, Math.max(220, viewportWidth - 16));
-    const configuredHeight = clamp(parseInt(this.config?.popup_height || (this.compactMode ? 156 : 220), 10) || (this.compactMode ? 156 : 220), 100, 520);
-    const estimatedHeight = Math.min(configuredHeight, Math.max(100, viewportHeight - 16));
+    const width = clamp(parseInt(this.config?.popup_width || 320, 10) || 320, 240, Math.max(240, viewportWidth - 16));
+    const configuredHeight = clamp(parseInt(this.config?.popup_height || (this.compactMode ? 200 : 320), 10) || (this.compactMode ? 200 : 320), 160, 560);
+    const estimatedHeight = Math.min(configuredHeight, Math.max(160, viewportHeight - 16));
     const yOffset = clamp(parseInt(this.config?.popup_offset_y || 14, 10) || 14, 0, 120);
     const xOffset = clamp(parseInt(this.config?.popup_offset_x || 0, 10) || 0, -120, 120);
 
     if (this.isMobileViewport()) {
       const safeLeft = viewportLeft + 8;
-      const mobileWidth = Math.max(220, viewportWidth - 16);
-      const mobileMaxHeight = Math.min(Math.max(160, estimatedHeight), Math.max(160, viewportHeight - 16));
+      const mobileWidth = Math.max(240, viewportWidth - 16);
+      const mobileMaxHeight = Math.min(Math.max(200, estimatedHeight), Math.max(200, viewportHeight - 16));
       const mobileTop = viewportTop + 8;
       this.popupStyle = `left:${safeLeft}px;top:${mobileTop}px;bottom:auto;width:${mobileWidth}px;height:${mobileMaxHeight}px;`;
       return;
@@ -539,5 +948,7 @@ export const store = createStore("slashShortcuts", {
     this.selectedIndex = 0;
     this.activeToken = null;
     this.popupStyle = "left:-9999px;top:-9999px;";
+    this.popupView = "shortcuts";
+    this.manualPopup = false;
   },
 });

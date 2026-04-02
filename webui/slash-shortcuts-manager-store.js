@@ -40,6 +40,25 @@ function buildDefaultInstruction() {
   return "Write the reusable instruction text inserted when this shortcut is used.\n\n$ARGUMENTS";
 }
 
+function firstMeaningfulLine(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || "";
+}
+
+function buildSuggestedShortcutName(instruction, fallbackName = "") {
+  const preferredSource = String(fallbackName || "").trim() || firstMeaningfulLine(instruction);
+  const compact = preferredSource
+    .replace(/^\/+/, "")
+    .replace(/[$]ARGUMENTS|[$][0-9]/g, " ")
+    .replace(/[^A-Za-z0-9 _-]+/g, " ")
+    .trim();
+  const words = compact.match(/[A-Za-z0-9_-]+/g) || [];
+  const candidate = words.slice(0, 6).join("-");
+  return candidate ? sanitizeShortcutName(candidate) : "";
+}
+
 function notifyError(message) { void toastFrontendError(message, "Shortcuts"); }
 function notifySuccess(message) { void toastFrontendSuccess(message, "Shortcuts"); }
 function emitShortcutsUpdated() { window.dispatchEvent(new CustomEvent("slash_shortcuts:updated")); }
@@ -68,7 +87,22 @@ const model = {
   openManager(options = {}) {
     const hasExplicitScope = Object.prototype.hasOwnProperty.call(options, "projectName") || Object.prototype.hasOwnProperty.call(options, "agentProfile");
     this.pendingScope = hasExplicitScope ? { projectName: options.projectName || "", agentProfile: options.agentProfile || "" } : null;
-    this.pendingCreate = options.openEditor || options.prefillName ? { name: options.prefillName || "" } : null;
+    const shouldOpenEditor = !!(
+      options.openEditor
+      || options.prefillName
+      || options.prefillInstruction
+      || options.prefillDescription
+      || options.prefillDisplayLabel
+      || options.prefillArgumentHint
+    );
+    this.pendingCreate = shouldOpenEditor ? {
+      name: options.prefillName || "",
+      instruction: options.prefillInstruction || "",
+      description: options.prefillDescription || "",
+      displayLabel: options.prefillDisplayLabel || "",
+      argumentHint: options.prefillArgumentHint || "",
+      ...(Object.prototype.hasOwnProperty.call(options, "projectName") ? { projectName: options.projectName || "" } : {}),
+    } : null;
     return window.openModal?.(MAIN_MODAL_PATH);
   },
 
@@ -86,7 +120,7 @@ const model = {
     if (this.pendingCreate) {
       const pendingCreate = { ...this.pendingCreate };
       this.pendingCreate = null;
-      await this.openCreateShortcut({ name: pendingCreate.name });
+      await this.openCreateShortcut(pendingCreate);
     }
   },
 
@@ -109,14 +143,18 @@ const model = {
     try {
       const response = await callJsonApi("projects", { action: "list_options" });
       this.projects = Array.isArray(response?.data) ? response.data : [];
-    } catch { this.projects = []; }
+    } catch {
+      this.projects = [];
+    }
   },
 
   async loadAgentProfiles() {
     try {
       const response = await callJsonApi("agents", { action: "list" });
       this.agentProfiles = Array.isArray(response?.data) ? response.data : [];
-    } catch { this.agentProfiles = []; }
+    } catch {
+      this.agentProfiles = [];
+    }
   },
 
   normalizeProject(projectName) {
@@ -191,11 +229,15 @@ const model = {
     if (Object.prototype.hasOwnProperty.call(options, "projectName")) this.projectName = this.normalizeProject(options.projectName || "");
     this.agentProfile = "";
     if (Object.prototype.hasOwnProperty.call(options, "projectName")) await this.loadShortcuts();
+    const suggestedName = buildSuggestedShortcutName(options.instruction || "", options.name || "");
     this.editor = {
       ...createEmptyEditor(),
       mode: "create",
-      name: sanitizeShortcutName(options.name || ""),
-      instruction: buildDefaultInstruction(),
+      name: suggestedName,
+      description: String(options.description || ""),
+      displayLabel: String(options.displayLabel || ""),
+      argumentHint: String(options.argumentHint || ""),
+      instruction: String(options.instruction || "") || buildDefaultInstruction(),
     };
     this.editorSnapshot = this._serializeEditor();
     await this.openEditorModal();
