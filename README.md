@@ -22,9 +22,17 @@ I owe existing users a direct apology here: older versions of **Shortcuts** stor
 
 If you are upgrading from an older version and the Plugin Installer fails, **your shortcuts do not need to be lost**. Back them up first, then reinstall, then restore them using this guide:
 
-- [Backup and reinstall guide](./BACKUP_AND_REINSTALL.md)
+- [Backup and reinstall guide](README.md)
 
-Once you are on the new layout, shipped examples live in `/examples/` and editable global shortcuts stay in `/shortcuts/`.
+Once you are on the new layout, shipped examples live in `/helpers/helpers/examples/` and editable global shortcuts stay in `/shortcuts/`.
+
+## Legacy backup and reinstall
+
+This plugin previously had a separate backup/reinstall note because older versions stored editable shortcut files inside the plugin install folder. That layout was wrong for mutable user data.
+
+- Back up legacy shortcuts before reinstalling.
+- Restore them into the correct scoped `shortcuts/` directory after reinstall.
+- Shipped examples now live under `helpers/helpers/examples/`.
 
 ## Core syntax
 
@@ -103,7 +111,7 @@ The popup also includes:
 
 The popup Add shortcut action opens the Create Shortcut flow in Global scope.
 
-If the plugin feels empty on first install, copy a starter file from `/a0/usr/plugins/slash_shortcuts/examples/` into the active `shortcuts/` scope, or create a new shortcut directly from the manager.
+If the plugin feels empty on first install, copy a starter file from `/a0/usr/plugins/slash_shortcuts/helpers/helpers/examples/` into the active `shortcuts/` scope, or create a new shortcut directly from the manager.
 
 ## Settings
 
@@ -127,7 +135,7 @@ Shortcuts are stored as markdown-backed files with frontmatter.
 
 Location pattern:
 - runtime shortcuts load from scoped `shortcuts/` directories under the plugin resolution path
-- shipped examples live in `/a0/usr/plugins/slash_shortcuts/examples/`
+- shipped examples live in `/a0/usr/plugins/slash_shortcuts/helpers/helpers/examples/`
 
 File suffix:
 - `.shortcut.md`
@@ -142,7 +150,7 @@ The markdown body is the instruction template.
 
 ## Included examples
 
-The repo ships example shortcuts in `/a0/usr/plugins/slash_shortcuts/examples/` such as:
+The repo ships example shortcuts in `/a0/usr/plugins/slash_shortcuts/helpers/helpers/examples/` such as:
 - `summarize`
 - `fix`
 - `review`

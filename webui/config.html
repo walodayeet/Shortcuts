@@ -10,23 +10,35 @@
           <p>Behavior settings only. Manage actual commands from the dedicated <strong>Shortcuts</strong> sidebar button.</p>
         </div>
 
-        <label class="ss-field"><span>Enabled</span><input type="checkbox" x-model="config.enabled"></label>
-        <label class="ss-field"><span>Show descriptions in popup</span><input type="checkbox" x-model="config.show_descriptions"></label>
-        <label class="ss-field"><span>Keep popup open after inserting a shortcut</span><input type="checkbox" x-model="config.keep_popup_open_after_insert"></label>
-        <label class="ss-field"><span>Compact popup mode</span><input type="checkbox" x-model="config.compact_mode"></label>
-        <label class="ss-field"><span>Match descriptions when filtering</span><input type="checkbox" x-model="config.match_descriptions"></label>
+        <section class="ss-config-section">
+          <h3>General</h3>
+          <label class="ss-field"><span>Enabled</span><input type="checkbox" x-model="config.enabled"></label>
+          <label class="ss-field"><span>Keep popup open after inserting a shortcut</span><input type="checkbox" x-model="config.keep_popup_open_after_insert"></label>
+          <label class="ss-field"><span>Compact popup mode</span><input type="checkbox" x-model="config.compact_mode"></label>
+          <label class="ss-field"><span>Maximum visible items</span><input type="number" min="1" max="20" x-model.number="config.max_visible_items"></label>
+        </section>
 
-        <label class="ss-field"><span>Maximum visible items</span><input type="number" min="1" max="20" x-model.number="config.max_visible_items"></label>
-        <label class="ss-field"><span>Popup width (px)</span><input type="number" min="220" max="520" x-model.number="config.popup_width"></label>
-        <label class="ss-field"><span>Popup height (px)</span><input type="number" min="100" max="520" x-model.number="config.popup_height"></label>
-        <label class="ss-field"><span>Popup upward offset (px)</span><input type="number" min="0" max="120" x-model.number="config.popup_offset_y"></label>
-        <label class="ss-field"><span>Popup horizontal offset (px)</span><input type="number" min="-120" max="120" x-model.number="config.popup_offset_x"></label>
+        <section class="ss-config-section">
+          <h3>Shortcuts Popup</h3>
+          <label class="ss-field"><span>Show descriptions in popup</span><input type="checkbox" x-model="config.show_descriptions"></label>
+          <label class="ss-field"><span>Match descriptions when filtering</span><input type="checkbox" x-model="config.match_descriptions"></label>
+          <label class="ss-field"><span>Popup width (px)</span><input type="number" min="220" max="520" x-model.number="config.popup_width"></label>
+          <label class="ss-field"><span>Popup height (px)</span><input type="number" min="100" max="520" x-model.number="config.popup_height"></label>
+          <label class="ss-field"><span>Popup upward offset (px)</span><input type="number" min="0" max="120" x-model.number="config.popup_offset_y"></label>
+          <label class="ss-field"><span>Popup horizontal offset (px)</span><input type="number" min="-120" max="120" x-model.number="config.popup_offset_x"></label>
+        </section>
+
+        <section class="ss-config-section">
+          <h3>Drafts Popup</h3>
+          <label class="ss-field"><span>Drafts popup width (px)</span><input type="number" min="320" max="760" x-model.number="config.drafts_popup_width"></label>
+          <label class="ss-field"><span>Drafts popup height (px)</span><input type="number" min="180" max="760" x-model.number="config.drafts_popup_height"></label>
+        </section>
       </div>
     </template>
   </div>
 
   <style>
-    .ss-config-root{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:.9rem}.ss-config-copy{grid-column:1/-1}.ss-field{display:flex;flex-direction:column;gap:.35rem}.ss-field span{font-size:.82rem;font-weight:600;color:var(--color-text-secondary)}
+    .ss-config-root{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:1rem}.ss-config-copy{grid-column:1/-1}.ss-config-section{display:flex;flex-direction:column;gap:.75rem;padding:.9rem;border:1px solid var(--color-border);border-radius:12px;background:color-mix(in srgb,var(--color-panel) 96%,transparent)}.ss-config-section h3{margin:0;font-size:.9rem;font-weight:800;color:var(--color-text)}.ss-field{display:flex;flex-direction:column;gap:.35rem}.ss-field span{font-size:.82rem;font-weight:600;color:var(--color-text-secondary)}
   </style>
 </body>
 </html>

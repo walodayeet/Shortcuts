@@ -13,6 +13,8 @@ export const DEFAULT_CONFIG = {
   popup_offset_x: 0,
   popup_width: 320,
   popup_height: 220,
+  drafts_popup_width: 520,
+  drafts_popup_height: 420,
   compact_mode: false,
   match_descriptions: true,
 };

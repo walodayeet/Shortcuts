@@ -8,3 +8,5 @@ popup_width: 320
 compact_mode: false
 match_descriptions: true
 popup_height: 220
+drafts_popup_width: 520
+drafts_popup_height: 420

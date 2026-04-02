@@ -919,16 +919,27 @@ export const store = createStore("slashShortcuts", {
     const viewportHeight = vv?.height || window.innerHeight;
     const viewportLeft = vv?.offsetLeft || 0;
     const viewportTop = vv?.offsetTop || 0;
-    const width = clamp(parseInt(this.config?.popup_width || 320, 10) || 320, 240, Math.max(240, viewportWidth - 16));
-    const configuredHeight = clamp(parseInt(this.config?.popup_height || (this.compactMode ? 200 : 320), 10) || (this.compactMode ? 200 : 320), 160, 560);
-    const estimatedHeight = Math.min(configuredHeight, Math.max(160, viewportHeight - 16));
+
+    const baseWidth = clamp(parseInt(this.config?.popup_width || 320, 10) || 320, 240, Math.max(240, viewportWidth - 16));
+    const baseConfiguredHeight = clamp(parseInt(this.config?.popup_height || (this.compactMode ? 200 : 320), 10) || (this.compactMode ? 200 : 320), 160, 560);
+    const draftsConfiguredWidth = clamp(parseInt(this.config?.drafts_popup_width || 520, 10) || 520, 320, Math.max(320, viewportWidth - 16));
+    const draftsConfiguredHeight = clamp(parseInt(this.config?.drafts_popup_height || 420, 10) || 420, 180, 760);
+    const width = this.isDraftsView
+      ? Math.min(draftsConfiguredWidth, Math.max(260, viewportWidth - 16))
+      : baseWidth;
+    const estimatedHeight = this.isDraftsView
+      ? Math.min(draftsConfiguredHeight, Math.max(220, viewportHeight - 16))
+      : Math.min(baseConfiguredHeight, Math.max(160, viewportHeight - 16));
+
     const yOffset = clamp(parseInt(this.config?.popup_offset_y || 14, 10) || 14, 0, 120);
     const xOffset = clamp(parseInt(this.config?.popup_offset_x || 0, 10) || 0, -120, 120);
 
     if (this.isMobileViewport()) {
       const safeLeft = viewportLeft + 8;
       const mobileWidth = Math.max(240, viewportWidth - 16);
-      const mobileMaxHeight = Math.min(Math.max(200, estimatedHeight), Math.max(200, viewportHeight - 16));
+      const mobileMaxHeight = this.isDraftsView
+        ? Math.min(Math.max(260, estimatedHeight), Math.max(260, viewportHeight - 16))
+        : Math.min(Math.max(200, estimatedHeight), Math.max(200, viewportHeight - 16));
       const mobileTop = viewportTop + 8;
       this.popupStyle = `left:${safeLeft}px;top:${mobileTop}px;bottom:auto;width:${mobileWidth}px;height:${mobileMaxHeight}px;`;
       return;
@@ -936,9 +947,15 @@ export const store = createStore("slashShortcuts", {
 
     const preferredTop = rect.top - estimatedHeight - yOffset;
     const fallbackBelowTop = rect.bottom + 4;
-    const top = preferredTop >= viewportTop + 8 ? preferredTop : Math.min(viewportTop + viewportHeight - estimatedHeight - 8, fallbackBelowTop);
+    const top = preferredTop >= viewportTop + 8
+      ? preferredTop
+      : Math.min(viewportTop + viewportHeight - estimatedHeight - 8, fallbackBelowTop);
     const safeTop = Math.max(viewportTop + 8, top);
-    const left = Math.min(Math.max(rect.left + xOffset, viewportLeft + 8), Math.max(viewportLeft + 8, viewportLeft + viewportWidth - width - 8));
+    const preferredLeft = rect.left + xOffset;
+    const left = Math.min(
+      Math.max(preferredLeft, viewportLeft + 8),
+      Math.max(viewportLeft + 8, viewportLeft + viewportWidth - width - 8),
+    );
     this.popupStyle = `left:${left}px;top:${safeTop}px;bottom:auto;width:${width}px;height:${estimatedHeight}px;`;
   },
 
