@@ -326,41 +326,25 @@ function buildExpandedMessageInternal(message, matchedCommands, availableCommand
   const invocations = getTopLevelInvocations(matchedCommands);
   if (!invocations.length) return normalizeExpandedText(text);
 
-  const chunks = [];
+  const parts = [];
   let cursor = 0;
 
-  for (let index = 0; index < invocations.length; index += 1) {
-    const invocation = invocations[index];
+  for (const invocation of invocations) {
     const start = Number(invocation?.start ?? -1);
     const end = Number(invocation?.end ?? -1);
     if (start < 0 || end < start || start < cursor) continue;
-    const chunk = text.slice(cursor, start);
-    const normalizedChunk = chunk.replace(/\s+/g, " ").trim().toLowerCase();
-    const isConnectorOnly = index > 0 && ["and", "then", "and then", "&", ",", ";"].includes(normalizedChunk);
-    if (!isConnectorOnly) chunks.push(chunk);
+
+    parts.push(text.slice(cursor, start));
+
+    const expandedArguments = expandNestedArguments(invocation.raw_arguments, availableCommands, depth);
+    const renderedInstruction = renderShortcutTemplate(invocation.instruction, expandedArguments);
+    if (renderedInstruction) parts.push(renderedInstruction);
+
     cursor = end;
   }
-  chunks.push(text.slice(cursor));
 
-  const base = normalizeExpandedText(chunks.join(""));
-
-  const instructionText = invocations
-    .map((item) => {
-      const expandedArguments = expandNestedArguments(item.raw_arguments, availableCommands, depth);
-      return renderShortcutTemplate(item.instruction, expandedArguments);
-    })
-    .filter(Boolean)
-    .join(" ")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/ +([,.;:!?])/g, "$1")
-    .trim();
-
-  if (!instructionText) return base;
-  if (!base) return instructionText;
-  return `${instructionText} ${base}`
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/ +([,.;:!?])/g, "$1")
-    .trim();
+  parts.push(text.slice(cursor));
+  return normalizeExpandedText(parts.join(""));
 }
 
 export function buildExpandedMessage(message, matchedCommands) {

@@ -1,4 +1,4 @@
-import { ACCEPT_MARKER, buildExpandedMessage, detectCommandsInMessage, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.4.6";
+import { ACCEPT_MARKER, buildExpandedMessage, detectCommandsInMessage, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.4.7";
 
 export default async function expandSlashCommands(sendCtx) {
   if (!sendCtx || typeof sendCtx.message !== "string") return;

@@ -813,22 +813,30 @@ export const store = createStore("slashShortcuts", {
     if (!this.visible) return;
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
       this.close();
       return;
     }
     if (!this.isShortcutsView) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
+      event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
       if (this.filteredCommands.length) this.selectedIndex = (this.selectedIndex + 1) % this.filteredCommands.length;
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
+      event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
       if (this.filteredCommands.length) this.selectedIndex = (this.selectedIndex - 1 + this.filteredCommands.length) % this.filteredCommands.length;
       return;
     }
     if ((event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) || event.key === "Tab") {
       event.preventDefault();
+      event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
       if (this.filteredCommands.length) {
         this.applyByIndex(this.selectedIndex);
       } else {
