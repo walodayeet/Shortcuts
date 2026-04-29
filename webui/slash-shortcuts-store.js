@@ -1,8 +1,8 @@
 import { createStore } from "/js/AlpineStore.js";
 import { toastFrontendError, toastFrontendInfo, toastFrontendSuccess } from "/components/notifications/notification-store.js";
 import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
-import { ACCEPT_MARKER, DEFAULT_CONFIG, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.4.7";
-import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.4.7";
+import { ACCEPT_MARKER, DEFAULT_CONFIG, loadEffectiveShortcuts, loadPluginConfig } from "/plugins/slash_shortcuts/webui/slash-shortcuts-core.js?v=2.4.8";
+import { store as slashShortcutsManagerStore } from "/plugins/slash_shortcuts/webui/slash-shortcuts-manager-store.js?v=2.4.8";
 
 const API_PATH = "/api/plugins/slash_shortcuts/slash_shortcuts";
 const DRAFT_SCOPE_STORAGE_KEY = "slashShortcutsDraftScopeKey";
@@ -137,6 +137,8 @@ export const store = createStore("slashShortcuts", {
   draftSaving: false,
   popupView: "shortcuts",
   manualPopup: false,
+  lastLoadedContextId: "",
+  lastLoadedProjectName: "",
 
   init() {},
   get showDescriptions() { return !!this.config?.show_descriptions; },
@@ -180,6 +182,7 @@ export const store = createStore("slashShortcuts", {
     await this.reloadAll();
     this.bindInput();
     this.reposition();
+    this.watchContextHydration();
     const onUpdated = async () => {
       await this.reloadAll();
       this.handleInputLikeEvent();
@@ -188,11 +191,18 @@ export const store = createStore("slashShortcuts", {
     this.cleanupFns.push(() => window.removeEventListener("slash_shortcuts:updated", onUpdated));
   },
 
-  async reloadAll() {
+  async reloadAll(options = {}) {
+    const contextId = String(options.contextId || this.getCurrentContextId() || "").trim();
+    const projectName = String(options.projectName || this.getCurrentProjectName() || "").trim();
     try {
-      const [config, shortcutsResult] = await Promise.all([loadPluginConfig(), loadEffectiveShortcuts()]);
+      const [config, shortcutsResult] = await Promise.all([
+        loadPluginConfig(),
+        loadEffectiveShortcuts({ contextId, projectName }),
+      ]);
       this.config = config;
       this.commands = shortcutsResult.shortcuts || [];
+      this.lastLoadedContextId = contextId;
+      this.lastLoadedProjectName = String(shortcutsResult?.scope?.project_name || projectName || "").trim();
     } catch (error) {
       this.config = { ...DEFAULT_CONFIG };
       this.commands = [];
@@ -213,9 +223,13 @@ export const store = createStore("slashShortcuts", {
     return getContextId();
   },
 
+  getCurrentProjectName() {
+    return String(chatsStore?.selectedContext?.project?.name || "").trim();
+  },
+
   getDefaultDraftScopeKey() {
     if (this.getCurrentContextId()) return "chat";
-    if (this.draftContextScope?.project_name || this.draftScope?.project_name) return "project";
+    if (this.draftContextScope?.project_name || this.draftScope?.project_name || this.getCurrentProjectName()) return "project";
     return "global";
   },
 
@@ -223,7 +237,9 @@ export const store = createStore("slashShortcuts", {
     const normalized = normalizeDraftScopeKey(scopeKey) || this.getDefaultDraftScopeKey();
     const payload = { scope_key: normalized };
     const contextId = this.getCurrentContextId();
+    const projectName = this.getCurrentProjectName();
     if (contextId) payload.context_id = contextId;
+    if (projectName) payload.project_name = projectName;
     return payload;
   },
 
@@ -354,6 +370,21 @@ export const store = createStore("slashShortcuts", {
       this.handleInputLikeEvent();
       this.reposition();
     }, 180);
+  },
+
+  watchContextHydration() {
+    const timer = window.setInterval(async () => {
+      if (!this.bound) return;
+      const contextId = String(this.getCurrentContextId() || "").trim();
+      const projectName = String(this.getCurrentProjectName() || "").trim();
+      const contextChanged = contextId !== this.lastLoadedContextId;
+      const projectHydrated = !!projectName && projectName !== this.lastLoadedProjectName;
+      const projectCleared = !projectName && !!this.lastLoadedProjectName;
+      if (!contextChanged && !projectHydrated && !projectCleared) return;
+      await this.reloadAll({ contextId, projectName });
+      this.handleInputLikeEvent();
+    }, 400);
+    this.cleanupFns.push(() => window.clearInterval(timer));
   },
 
   stopMobileWatcher() {

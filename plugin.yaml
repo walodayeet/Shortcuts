@@ -1,7 +1,7 @@
 name: slash_shortcuts
 title: Shortcuts
 description: Project-aware shortcuts with inline multi-command expansion, empty global scope, and shipped examples in /helpers/examples.
-version: 2.4.7
+version: 2.4.8
 settings_sections:
   - agent
 per_project_config: true

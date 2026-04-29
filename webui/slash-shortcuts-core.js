@@ -21,6 +21,10 @@ export const DEFAULT_CONFIG = {
 
 const MAX_NESTED_EXPANSION_DEPTH = 8;
 
+function getActiveProjectName() {
+  return String(chatsStore?.selectedContext?.project?.name || "").trim();
+}
+
 function titleCaseFromCommand(command) {
   return String(command || "")
     .split(/[_\-\s]+/)
@@ -204,15 +208,17 @@ export function normalizeShortcut(item, index = 0) {
 async function loadScopedPluginConfig() {
   try {
     const contextId = chatsStore?.getSelectedChatId?.() || globalThis.getContext?.() || "";
+    const projectName = getActiveProjectName();
     const scopeInfo = await callJsonApi(SHORTCUTS_API_PATH, {
       action: "scope_info",
       context_id: contextId,
+      project_name: projectName,
     });
     const scope = scopeInfo?.scope || {};
     const response = await callJsonApi("plugins", {
       action: "get_config",
       plugin_name: PLUGIN_NAME,
-      project_name: scope.project_name || "",
+      project_name: scope.project_name || projectName || "",
       agent_profile: scope.agent_profile || "",
     });
     return response?.data || {};
@@ -226,18 +232,20 @@ export async function loadPluginConfig() {
   return { ...DEFAULT_CONFIG, ...(raw || {}) };
 }
 
-export async function loadEffectiveShortcuts() {
-  const contextId = chatsStore?.getSelectedChatId?.() || globalThis.getContext?.() || "";
+export async function loadEffectiveShortcuts(options = {}) {
+  const contextId = String(options.contextId || chatsStore?.getSelectedChatId?.() || globalThis.getContext?.() || "").trim();
+  const projectName = String(options.projectName || getActiveProjectName() || "").trim();
   const response = await callJsonApi(SHORTCUTS_API_PATH, {
     action: "list_effective",
     context_id: contextId,
+    ...(projectName ? { project_name: projectName } : {}),
   });
   const shortcuts = (Array.isArray(response?.shortcuts) ? response.shortcuts : [])
     .map((item, index) => normalizeShortcut(item, index))
     .filter(Boolean);
   return {
     shortcuts,
-    scope: response?.scope || { project_name: "", agent_profile: "" },
+    scope: response?.scope || { project_name: projectName || "", agent_profile: "" },
   };
 }
 

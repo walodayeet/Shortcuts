@@ -62,6 +62,7 @@ function buildSuggestedShortcutName(instruction, fallbackName = "") {
 function notifyError(message) { void toastFrontendError(message, "Shortcuts"); }
 function notifySuccess(message) { void toastFrontendSuccess(message, "Shortcuts"); }
 function emitShortcutsUpdated() { window.dispatchEvent(new CustomEvent("slash_shortcuts:updated")); }
+function getActiveProjectName() { return String(chatsStore?.selectedContext?.project?.name || "").trim(); }
 
 const model = {
   loading: false,
@@ -169,10 +170,15 @@ const model = {
 
   async resolveInitialScope() {
     const contextId = chatsStore?.getSelectedChatId?.() || globalThis.getContext?.() || "";
-    const scopeInfo = await callJsonApi(API_PATH, { action: "scope_info", context_id: contextId });
+    const projectName = getActiveProjectName();
+    const scopeInfo = await callJsonApi(API_PATH, {
+      action: "scope_info",
+      context_id: contextId,
+      project_name: projectName,
+    });
     this.contextScope = scopeInfo?.context_scope || { project_name: "", agent_profile: "" };
     const preferredScope = this.pendingScope || scopeInfo?.scope || {};
-    this.projectName = this.normalizeProject(preferredScope.project_name || "");
+    this.projectName = this.normalizeProject(preferredScope.project_name || projectName || "");
     this.agentProfile = "";
     this.pendingScope = null;
   },

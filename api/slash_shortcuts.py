@@ -36,10 +36,14 @@ class SlashShortcuts(ApiHandler):
         return Response(status=400, response=f"Unknown action: {action}")
 
     def _list_effective(self, input: dict) -> dict | Response:
+        explicit_project = str(input.get("project_name", "") or "")
+        explicit_agent = str(input.get("agent_profile", "") or "")
         context_scope = shortcuts_helper.get_context_scope(str(input.get("context_id", "") or ""))
+        project_name = explicit_project if "project_name" in input else context_scope["project_name"]
+        agent_profile = explicit_agent if "agent_profile" in input else context_scope["agent_profile"]
         shortcuts, scope = shortcuts_helper.list_effective_shortcuts(
-            project_name=context_scope["project_name"],
-            agent_profile=context_scope["agent_profile"],
+            project_name=project_name,
+            agent_profile=agent_profile,
         )
         return {"ok": True, "shortcuts": shortcuts, "scope": scope}
 

@@ -97,8 +97,13 @@ def get_context_scope(context_id: str = "") -> dict[str, str]:
     context = _get_context(context_id)
     if not context:
         return {"project_name": "", "agent_profile": ""}
+    project_name = projects.get_context_project_name(context) or ""
+    if not project_name:
+        output_project = context.get_output_data("project")
+        if isinstance(output_project, dict):
+            project_name = str(output_project.get("name", "") or "")
     return {
-        "project_name": projects.get_context_project_name(context) or "",
+        "project_name": project_name,
         "agent_profile": "",
     }
 
